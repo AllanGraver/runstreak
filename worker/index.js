@@ -189,7 +189,7 @@ async function getLeaderboard(env, scope, streakDays) {
   const sourceUrl = LEADERBOARD_SOURCES[scope];
   if (!sourceUrl) throw new Error("Ukendt ranglistetype.");
 
-  const cacheKey = `leaderboard:v2:${scope}`;
+  const cacheKey = `leaderboard:v3:${scope}`;
   const cached = await env.STRAVA_KV.get(cacheKey, "json");
   let leaderboard = cached;
   if (!leaderboard) {
