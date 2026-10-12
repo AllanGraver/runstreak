@@ -31,7 +31,7 @@ function redirectToApp(env, key, value) {
 }
 
 function requireConfig(env) {
-  if (!env.FRONTEND_URL || !env.STRAVA_CLIENT_ID || !env.STRAVA_CLIENT_SECRET || !env.STRAVA_ATHLETE_ID || !env.STRAVA_KV) {
+  if (!env.FRONTEND_URL || !env.STRAVA_CLIENT_ID || !env.STRAVA_CLIENT_SECRET || !env.STRAVA_KV) {
     throw new Error("Strava-serveren mangler påkrævet konfiguration.");
   }
 }
@@ -92,9 +92,6 @@ async function handleCallback(request, env) {
 
   try {
     const token = await exchangeToken({ grant_type: "authorization_code", code }, env);
-    if (String(token.athlete?.id) !== String(env.STRAVA_ATHLETE_ID)) {
-      return redirectToApp(env, "strava_error", "Den godkendte Strava-konto matcher ikke appens ejer.");
-    }
     await env.STRAVA_KV.put(connectionKey(deviceId), JSON.stringify({
       accessToken: token.access_token,
       refreshToken: token.refresh_token,

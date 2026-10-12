@@ -24,20 +24,17 @@ npm run build
 
 ## Aktivér Strava-forbindelsen
 
-Appen hostes statisk på GitHub Pages. OAuth-koden og Strava-hemmeligheden håndteres derfor af en Cloudflare Worker; hemmeligheden må aldrig lægges i frontend eller GitHub Pages. Aktivitetsdata, profilnavn og synkroniseringstid gemmes kun i `localStorage` i den browser, hvor du bruger appen. De offentliggøres ikke med GitHub Pages og opbevares ikke i Workerens KV. Workerens KV indeholder OAuth-tokens pr. enhed og en engangs OAuth-state, der udløber efter 10 minutter.
+Appen hostes statisk på GitHub Pages. OAuth-koden og Strava-hemmeligheden håndteres derfor af en Cloudflare Worker; hemmeligheden må aldrig lægges i frontend eller GitHub Pages. Hver bruger godkender sin egen Strava-konto. Workerens KV indeholder OAuth-tokens pr. browser/enhed og en engangs OAuth-state, der udløber efter 10 minutter. Aktivitetsdata, profilnavn og synkroniseringstid gemmes kun lokalt i brugerens browser; de gemmes ikke i Workerens KV.
 
 1. Opret en app på [Strava API Settings](https://www.strava.com/settings/api). Brug Workerens domæne som **Authorization Callback Domain**. Den fulde callback-URL er `https://DIN-WORKER.workers.dev/auth/callback`.
 2. Opret en Cloudflare KV-namespace: `npx wrangler login` og derefter `npx wrangler kv namespace create STRAVA_KV`.
-3. Sæt namespace-ID'et i `wrangler.toml`, og ret `FRONTEND_URL` til din fulde GitHub Pages-adresse, inklusive repository-stien og afsluttende `/`.
-4. Find dit Strava-athlete-ID i din profiladresse (`strava.com/athletes/ID`), og opret Worker-hemmelighederne:
+3. Sæt namespace-ID'et i `wrangler.toml`. `FRONTEND_URL` er allerede sat til `https://allangraver.github.io/runstreak/`.
+4. Opret Worker-hemmelighederne:
 
 	```bash
 	npx wrangler secret put STRAVA_CLIENT_ID
 	npx wrangler secret put STRAVA_CLIENT_SECRET
-	npx wrangler secret put STRAVA_ATHLETE_ID
 	```
-
-	Athlete-ID'et begrænser forbindelsen til din konto, så andre Strava-konti ikke kan overtage den gemte forbindelse.
 5. Udgiv Worker'en med `npx wrangler deploy`. Kopiér dens basisadresse, for eksempel `https://runstreak-strava.DIT-SUBDOMAIN.workers.dev`.
 6. Tilføj en GitHub Actions repository variable med navnet `VITE_STRAVA_API_URL` og Workerens basisadresse. Kør Pages-workflowet igen.
 

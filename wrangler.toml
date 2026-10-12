@@ -7,4 +7,4 @@ binding = "STRAVA_KV"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 [vars]
-FRONTEND_URL = "https://DIT-BRUGERNAVN.github.io/runstreak/"
+FRONTEND_URL = "https://allangraver.github.io/runstreak/"
