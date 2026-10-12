@@ -211,7 +211,7 @@ async function getLeaderboard(env, scope, streakDays) {
   }
 
   const sortedByStreak = [...leaderboard.entries].sort((a, b) => b.streakDays - a.streakDays || a.rank - b.rank);
-  const above = sortedByStreak.filter(entry => entry.streakDays > streakDays).slice(-5).reverse();
+  const above = sortedByStreak.filter(entry => entry.streakDays > streakDays).slice(-5);
   const below = sortedByStreak.filter(entry => entry.streakDays <= streakDays).slice(0, 5);
   const rank = sortedByStreak.filter(entry => entry.streakDays > streakDays).length + 1;
   const nearby = [
