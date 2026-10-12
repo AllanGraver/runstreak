@@ -76,6 +76,74 @@ async function stravaFetch(path, connection) {
   return response.json();
 }
 
+function localDayNumber(date) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date || "");
+  if (!match) return null;
+  return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000);
+}
+
+function copenhagenDate() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Copenhagen",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+async function getRunStreak(connection) {
+  const today = localDayNumber(copenhagenDate());
+  let expectedDay = null;
+  let streakDays = 0;
+  let streakStartDate = null;
+  let latestRun = null;
+
+  for (let page = 1; ; page += 1) {
+    const activities = await stravaFetch(`/athlete/activities?per_page=200&page=${page}`, connection);
+    if (!activities.length) break;
+
+    for (const activity of activities) {
+      const isRun = activity.sport_type === "Run" || activity.sport_type === "TrailRun" || activity.type === "Run" || activity.type === "VirtualRun";
+      if (!isRun || activity.distance < 1600) continue;
+
+      const date = activity.start_date_local?.slice(0, 10);
+      const day = localDayNumber(date);
+      if (day === null) continue;
+
+      if (!latestRun) {
+        latestRun = {
+          name: activity.name,
+          distanceKm: (activity.distance / 1000).toFixed(1).replace(".", ","),
+          date: activity.start_date_local
+        };
+      }
+
+      if (expectedDay === null) {
+        if (today - day > 1 || day > today) {
+          return { streakDays: 0, streakStartDate: null, latestRun };
+        }
+        expectedDay = day;
+        streakDays = 1;
+        streakStartDate = date;
+      } else if (day === expectedDay) {
+        continue;
+      } else if (day === expectedDay - 1) {
+        expectedDay = day;
+        streakDays += 1;
+        streakStartDate = date;
+      } else if (day < expectedDay - 1) {
+        return { streakDays, streakStartDate, latestRun };
+      }
+    }
+
+    if (activities.length < 200) break;
+  }
+
+  return { streakDays, streakStartDate, latestRun };
+}
+
 async function handleCallback(request, env) {
   const url = new URL(request.url);
   if (url.searchParams.has("error")) {
@@ -149,18 +217,13 @@ export default {
         if (url.pathname === "/api/sync" && request.method === "GET") {
           const connection = await getConnection(env, deviceId);
           if (!connection) return json({ error: "Forbind først din Strava-konto." }, 401, env);
-          const [activities, athlete] = await Promise.all([
-            stravaFetch("/athlete/activities?per_page=30", connection),
+          const [streak, athlete] = await Promise.all([
+            getRunStreak(connection),
             stravaFetch("/athlete", connection)
           ]);
-          const run = activities.find(activity => activity.sport_type === "Run" || activity.type === "Run" || activity.type === "VirtualRun");
           return json({
             athleteName: `${athlete.firstname} ${athlete.lastname}`.trim(),
-            latestRun: run ? {
-              name: run.name,
-              distanceKm: (run.distance / 1000).toFixed(1).replace(".", ","),
-              date: run.start_date_local
-            } : null
+            ...streak
           }, 200, env);
         }
 
