@@ -171,41 +171,61 @@ function decodeHtmlText(value) {
 function parseLeaderboard(html) {
   const entries = [];
   for (const [, body] of html.matchAll(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/gi)) {
-    const rowMatch = body.match(/<tr\b[^>]*>([\s\S]*?)<\/tr>/i);
-    if (!rowMatch) continue;
-    const cells = [...rowMatch[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)]
-      .map(([, cell]) => decodeHtmlText(cell));
-    if (cells.length < 7 || !/^\d+$/.test(cells[0])) continue;
+    for (const [, row] of body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+      const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)]
+        .map(([, cell]) => decodeHtmlText(cell));
+      if (cells.length < 7 || !/^\d+$/.test(cells[0])) continue;
 
-    const streak = cells[6].match(/^([\d,.]+)\s*(?:dage|days)\b/i);
-    const streakDays = streak ? Number(streak[1].replace(/[,.]/g, "")) : NaN;
-    if (!cells[1] || !Number.isSafeInteger(streakDays)) continue;
-    entries.push({ rank: Number(cells[0]), name: cells[1], streakDays });
-    if (entries.length === 10) break;
+      const streak = cells[6].match(/^([\d,.]+)\s*(?:dage|days)\b/i);
+      const streakDays = streak ? Number(streak[1].replace(/[,.]/g, "")) : NaN;
+      if (!cells[1] || !Number.isSafeInteger(streakDays)) continue;
+      entries.push({ rank: Number(cells[0]), name: cells[1], streakDays });
+    }
   }
   return entries;
 }
 
-async function getLeaderboard(env, scope) {
+async function getLeaderboard(env, scope, streakDays) {
   const sourceUrl = LEADERBOARD_SOURCES[scope];
   if (!sourceUrl) throw new Error("Ukendt ranglistetype.");
 
-  const cacheKey = `leaderboard:${scope}`;
+  const cacheKey = `leaderboard:v2:${scope}`;
   const cached = await env.STRAVA_KV.get(cacheKey, "json");
-  if (cached) return cached;
+  let leaderboard = cached;
+  if (!leaderboard) {
+    const response = await fetch(sourceUrl, {
+      headers: { Accept: "text/html" },
+      cf: { cacheTtl: 900, cacheEverything: true }
+    });
+    if (!response.ok) throw new Error("Den officielle rangliste kunne ikke hentes lige nu.");
 
-  const response = await fetch(sourceUrl, {
-    headers: { Accept: "text/html" },
-    cf: { cacheTtl: 900, cacheEverything: true }
-  });
-  if (!response.ok) throw new Error("Den officielle rangliste kunne ikke hentes lige nu.");
+    const entries = parseLeaderboard(await response.text());
+    if (entries.length === 0) throw new Error("Den officielle rangliste havde et ukendt format.");
+    leaderboard = { scope, entries, sourceUrl, fetchedAt: new Date().toISOString() };
+    await env.STRAVA_KV.put(cacheKey, JSON.stringify(leaderboard), { expirationTtl: 1800 });
+  }
 
-  const entries = parseLeaderboard(await response.text());
-  if (entries.length === 0) throw new Error("Den officielle rangliste havde et ukendt format.");
+  const top = [...leaderboard.entries].sort((a, b) => a.rank - b.rank).slice(0, 20);
+  if (!Number.isSafeInteger(streakDays) || streakDays < 1) {
+    return { ...leaderboard, entries: top, estimatedPlacement: null };
+  }
 
-  const result = { scope, entries, sourceUrl, fetchedAt: new Date().toISOString() };
-  await env.STRAVA_KV.put(cacheKey, JSON.stringify(result), { expirationTtl: 1800 });
-  return result;
+  const sortedByStreak = [...leaderboard.entries].sort((a, b) => b.streakDays - a.streakDays || a.rank - b.rank);
+  const above = sortedByStreak.filter(entry => entry.streakDays > streakDays).slice(-5).reverse();
+  const below = sortedByStreak.filter(entry => entry.streakDays <= streakDays).slice(0, 5);
+  const rank = sortedByStreak.filter(entry => entry.streakDays > streakDays).length + 1;
+  const nearby = [
+    ...above.map((entry, index) => ({
+      ...entry,
+      comparisonRank: rank - above.length + index
+    })),
+    { name: "Din Strava-streak", streakDays, comparisonRank: rank, isUser: true },
+    ...below.map((entry, index) => ({
+      ...entry,
+      comparisonRank: rank + index + 1
+    }))
+  ];
+  return { ...leaderboard, entries: top, estimatedPlacement: { rank, nearby } };
 }
 
 async function handleCallback(request, env) {
@@ -278,7 +298,12 @@ export default {
           if (scope !== "national" && scope !== "global") {
             return json({ error: "Vælg national eller global rangliste." }, 400, env);
           }
-          return json(await getLeaderboard(env, scope), 200, env);
+          const rawStreakDays = url.searchParams.get("streakDays");
+          const streakDays = rawStreakDays && /^\d+$/.test(rawStreakDays) ? Number(rawStreakDays) : null;
+          if (streakDays !== null && !Number.isSafeInteger(streakDays)) {
+            return json({ error: "Streakdage skal være et gyldigt heltal." }, 400, env);
+          }
+          return json(await getLeaderboard(env, scope, streakDays), 200, env);
         }
 
         if (url.pathname === "/api/status" && request.method === "GET") {
