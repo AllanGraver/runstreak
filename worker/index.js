@@ -97,11 +97,33 @@ function copenhagenDate() {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-async function getRunStreak(connection) {
-  const today = localDayNumber(copenhagenDate());
-  let expectedDay = null;
-  let streakDays = 0;
-  let streakStartDate = null;
+function startOfWeekDay(day) {
+  const weekday = new Date(day * 86400000).getUTCDay();
+  return day - ((weekday + 6) % 7);
+}
+
+function emptyDistanceStats() {
+  return { distanceKm: 0, runCount: 0, movingTimeSeconds: 0, elapsedTimeSeconds: 0 };
+}
+
+function addRunToStats(stats, activity) {
+  stats.distanceKm += activity.distance / 1000;
+  stats.runCount += 1;
+  stats.movingTimeSeconds += activity.moving_time || 0;
+  stats.elapsedTimeSeconds += activity.elapsed_time || 0;
+}
+
+async function getActivityStats(connection) {
+  const currentDate = copenhagenDate();
+  const today = localDayNumber(currentDate);
+  const currentMonth = currentDate.slice(0, 7);
+  const currentYear = currentDate.slice(0, 4);
+  const weekStart = startOfWeekDay(today);
+  const daysWithRuns = new Set();
+  const week = emptyDistanceStats();
+  const month = emptyDistanceStats();
+  const year = emptyDistanceStats();
+  const allTime = emptyDistanceStats();
   let latestRun = null;
 
   for (let page = 1; ; page += 1) {
@@ -109,8 +131,9 @@ async function getRunStreak(connection) {
     if (!activities.length) break;
 
     for (const activity of activities) {
-      const isRun = activity.sport_type === "Run" || activity.sport_type === "TrailRun" || activity.type === "Run" || activity.type === "VirtualRun";
-      if (!isRun || activity.distance < 1600) continue;
+      const isRun = activity.sport_type === "Run" || activity.sport_type === "TrailRun" || activity.sport_type === "VirtualRun" ||
+        activity.type === "Run" || activity.type === "TrailRun" || activity.type === "VirtualRun";
+      if (!isRun || !Number.isFinite(activity.distance) || activity.distance < 1600) continue;
 
       const date = activity.start_date_local?.slice(0, 10);
       const day = localDayNumber(date);
@@ -124,28 +147,45 @@ async function getRunStreak(connection) {
         };
       }
 
-      if (expectedDay === null) {
-        if (today - day > 1 || day > today) {
-          return { streakDays: 0, streakStartDate: null, latestRun };
-        }
-        expectedDay = day;
-        streakDays = 1;
-        streakStartDate = date;
-      } else if (day === expectedDay) {
-        continue;
-      } else if (day === expectedDay - 1) {
-        expectedDay = day;
-        streakDays += 1;
-        streakStartDate = date;
-      } else if (day < expectedDay - 1) {
-        return { streakDays, streakStartDate, latestRun };
-      }
+      daysWithRuns.add(day);
+      addRunToStats(allTime, activity);
+      if (day >= weekStart && day <= today) addRunToStats(week, activity);
+      if (date.slice(0, 7) === currentMonth) addRunToStats(month, activity);
+      if (date.slice(0, 4) === currentYear) addRunToStats(year, activity);
     }
 
     if (activities.length < 200) break;
   }
 
-  return { streakDays, streakStartDate, latestRun };
+  const orderedDays = [...daysWithRuns].sort((a, b) => b - a);
+  let streakDays = 0;
+  let streakStartDate = null;
+  let expectedDay = null;
+  if (orderedDays.length && today - orderedDays[0] <= 1 && orderedDays[0] <= today) {
+    for (const day of orderedDays) {
+      if (expectedDay !== null && day !== expectedDay - 1) break;
+      streakDays += 1;
+      expectedDay = day;
+      streakStartDate = new Date(day * 86400000).toISOString().slice(0, 10);
+    }
+  }
+
+  return {
+    streakDays,
+    streakStartDate,
+    latestRun,
+    activityStats: {
+      week,
+      month,
+      year,
+      allTime: {
+        ...allTime,
+        averageDistanceKm: allTime.runCount ? allTime.distanceKm / allTime.runCount : 0,
+        averagePaceSecondsPerKm: allTime.distanceKm ? allTime.movingTimeSeconds / allTime.distanceKm : 0,
+        averageDurationSeconds: allTime.runCount ? allTime.elapsedTimeSeconds / allTime.runCount : 0
+      }
+    }
+  };
 }
 
 function decodeHtmlText(value) {
@@ -314,13 +354,13 @@ export default {
         if (url.pathname === "/api/sync" && request.method === "GET") {
           const connection = await getConnection(env, deviceId);
           if (!connection) return json({ error: "Forbind først din Strava-konto." }, 401, env);
-          const [streak, athlete] = await Promise.all([
-            getRunStreak(connection),
+          const [stats, athlete] = await Promise.all([
+            getActivityStats(connection),
             stravaFetch("/athlete", connection)
           ]);
           return json({
             athleteName: `${athlete.firstname} ${athlete.lastname}`.trim(),
-            ...streak
+            ...stats
           }, 200, env);
         }
 
