@@ -1,6 +1,6 @@
-.strava-error{margin:12px 0;color:#b91c1c;font-size:14px;font-weight:700}
-.strava-setup{margin:10px 0;color:#64748b;font-size:13px}
+.strava-error{margin:12px 0;color:#b91c1c;font-size:var(--font-body);font-weight:700}
+.strava-setup{margin:10px 0;color:#64748b;font-size:var(--font-body)}
 .strava button:disabled{opacity:.65;cursor:wait}
-.leaderboard-source{color:#64748b;font-size:13px}
+.leaderboard-source{color:#64748b;font-size:var(--font-body)}
 .leaderboard-source a{color:#c2410c;font-weight:700}
-.leaderboard-note{margin:12px 16px 16px;color:#64748b;font-size:13px}
+.leaderboard-note{margin:12px 16px 16px;color:#64748b;font-size:var(--font-body)}
