@@ -1,3 +1,5 @@
 .strava-error{margin:12px 0;color:#b91c1c;font-size:14px;font-weight:700}
 .strava-setup{margin:10px 0;color:#64748b;font-size:13px}
 .strava button:disabled{opacity:.65;cursor:wait}
+.leaderboard-source{color:#64748b;font-size:13px}
+.leaderboard-source a{color:#c2410c;font-weight:700}

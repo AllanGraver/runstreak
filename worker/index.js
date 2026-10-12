@@ -1,6 +1,10 @@
 const TOKEN_URL = "https://www.strava.com/oauth/token";
 const API_URL = "https://www.strava.com/api/v3";
 const CONNECTION_PREFIX = "strava-connection:";
+const LEADERBOARD_SOURCES = {
+  national: "https://www.runeveryday.com/dk_active_streaks.php",
+  global: "https://www.runeveryday.com/all_active_streaks.php"
+};
 
 function validDeviceId(deviceId) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deviceId || "");
@@ -144,6 +148,66 @@ async function getRunStreak(connection) {
   return { streakDays, streakStartDate, latestRun };
 }
 
+function decodeHtmlText(value) {
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&([a-z]+);/gi, (entity, name) => ({
+      aelig: "æ", AElig: "Æ", oslash: "ø", Oslash: "Ø", aring: "å", Aring: "Å",
+      auml: "ä", Auml: "Ä", ouml: "ö", Ouml: "Ö", uuml: "ü", Uuml: "Ü",
+      eacute: "é", Eacute: "É", egrave: "è", Egrave: "È", ccedil: "ç", Ccedil: "Ç"
+    }[name] || entity))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseLeaderboard(html) {
+  const entries = [];
+  for (const [, body] of html.matchAll(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/gi)) {
+    const rowMatch = body.match(/<tr\b[^>]*>([\s\S]*?)<\/tr>/i);
+    if (!rowMatch) continue;
+    const cells = [...rowMatch[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)]
+      .map(([, cell]) => decodeHtmlText(cell));
+    if (cells.length < 7 || !/^\d+$/.test(cells[0])) continue;
+
+    const streak = cells[6].match(/^([\d,.]+)\s*(?:dage|days)\b/i);
+    const streakDays = streak ? Number(streak[1].replace(/[,.]/g, "")) : NaN;
+    if (!cells[1] || !Number.isSafeInteger(streakDays)) continue;
+    entries.push({ rank: Number(cells[0]), name: cells[1], streakDays });
+    if (entries.length === 10) break;
+  }
+  return entries;
+}
+
+async function getLeaderboard(env, scope) {
+  const sourceUrl = LEADERBOARD_SOURCES[scope];
+  if (!sourceUrl) throw new Error("Ukendt ranglistetype.");
+
+  const cacheKey = `leaderboard:${scope}`;
+  const cached = await env.STRAVA_KV.get(cacheKey, "json");
+  if (cached) return cached;
+
+  const response = await fetch(sourceUrl, {
+    headers: { Accept: "text/html" },
+    cf: { cacheTtl: 900, cacheEverything: true }
+  });
+  if (!response.ok) throw new Error("Den officielle rangliste kunne ikke hentes lige nu.");
+
+  const entries = parseLeaderboard(await response.text());
+  if (entries.length === 0) throw new Error("Den officielle rangliste havde et ukendt format.");
+
+  const result = { scope, entries, sourceUrl, fetchedAt: new Date().toISOString() };
+  await env.STRAVA_KV.put(cacheKey, JSON.stringify(result), { expirationTtl: 1800 });
+  return result;
+}
+
 async function handleCallback(request, env) {
   const url = new URL(request.url);
   if (url.searchParams.has("error")) {
@@ -208,6 +272,14 @@ export default {
         }
         const deviceId = request.headers.get("X-Device-ID");
         if (!validDeviceId(deviceId)) return json({ error: "Ugyldig lokal enhedsnøgle." }, 400, env);
+
+        if (url.pathname === "/api/leaderboard" && request.method === "GET") {
+          const scope = url.searchParams.get("scope");
+          if (scope !== "national" && scope !== "global") {
+            return json({ error: "Vælg national eller global rangliste." }, 400, env);
+          }
+          return json(await getLeaderboard(env, scope), 200, env);
+        }
 
         if (url.pathname === "/api/status" && request.method === "GET") {
           const connection = await getConnection(env, deviceId);
