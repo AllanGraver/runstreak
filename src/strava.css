@@ -11,3 +11,7 @@
 .leaderboard-rules h2{margin:0 0 10px}
 .leaderboard-rules p{margin:8px 0;color:#475569}
 .leaderboard-rules a{color:#c2410c;font-weight:700}
+.leaderboard-recommendations h2{margin:0 0 10px}
+.leaderboard-recommendations ul{margin:0;padding-left:20px;color:#475569}
+.leaderboard-recommendations li{padding-left:4px}
+.leaderboard-recommendations li+li{margin-top:12px}
