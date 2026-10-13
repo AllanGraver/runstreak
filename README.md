@@ -1,6 +1,6 @@
 # RunStreak v7
 
-Runstreak-app med Strava-forbindelse, milepæle, community-ranglister og profilstatistik.
+Runstreak-app med Strava-forbindelse, milepæle, community-ranglister og profilstatistik. Kommende milepæle kan tilføjes som heldagsbegivenheder i Google Kalender eller Outlook eller hentes som en `.ics`-fil.
 
 ## Lokal kørsel
 
