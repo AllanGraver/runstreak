@@ -6,5 +6,8 @@ compatibility_date = "2026-10-12"
 binding = "STRAVA_KV"
 id = "0acdde7f1de543059f468bc1455d2957"
 
+[ai]
+binding = "AI"
+
 [vars]
 FRONTEND_URL = "https://allangraver.github.io/runstreak/"

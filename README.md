@@ -38,6 +38,10 @@ Appen hostes statisk på GitHub Pages. OAuth-koden og Strava-hemmeligheden hånd
 5. Udgiv Worker'en med `npx wrangler deploy`. Kopiér dens basisadresse, for eksempel `https://runstreak-strava.DIT-SUBDOMAIN.workers.dev`.
 6. Tilføj en GitHub Actions repository variable med navnet `VITE_STRAVA_API_URL` og Workerens basisadresse. Kør Pages-workflowet igen.
 
+### RunHub AI Coach
+
+RunHub's AI Coach uses the Worker's `/api/runhub/coach` endpoint and the Cloudflare Workers AI binding declared in `wrangler.toml`. The endpoint requires the existing per-device Strava connection, accepts only race goal and training-plan summaries plus at most 12 weekly aggregates, and does not receive activity names, IDs, maps, or individual runs. Deploy the Worker after adding the AI binding with `npx wrangler deploy`. Workers AI usage is subject to Cloudflare account limits and pricing.
+
 Strava-godkendelsen beder om `read` og `activity:read_all` for at kunne finde private løbeaktiviteter. Synkronisering gennemgår Strava-aktiviteter i sider for at beregne streak og statistik. En løbedag tæller, hvis der er mindst ét løb på mindst 1,6 km den dag. Streaken tæller sammenhængende kalenderdage og bevares, hvis seneste kvalificerende løb var i går; datoer beregnes efter dansk tid.
 
 Alle distance- og gennemsnitsmålinger bruger verificerede Strava-løb på mindst 1,6 km; aktiviteter under grænsen og andre sportstyper udelades. Ugentlig distance gælder mandag til søndag i dansk kalender, og måneds- og årstal følger dansk kalender. Livstidskilometer, Distance Explorer og antal løb bruger samme filter. Gennemsnitstempo er samlet bevægelsestid divideret med samlet distance (distancevægtet), gennemsnitsdistance er samlet distance divideret med antal kvalificerende løb, og gennemsnitligt tidsforbrug er gennemsnitlig samlet aktivitetstid pr. løb. Explorer-sammenligningerne er beregnet fra de kvalificerende livstidskilometer.
